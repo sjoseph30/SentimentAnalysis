@@ -1,0 +1,42 @@
+import pandas as pd
+import torch
+from transformers import pipeline
+from flair.models import TextClassifier
+from flair.data import Sentence
+from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+
+# Read the CSV file
+df = pd.read_csv("File.csv", encoding="latin1")
+df = df.dropna(subset=["Review"])
+
+# Initialize the sentiment analyzers
+vader = SentimentIntensityAnalyzer()
+bert_classifier = pipeline("sentiment-analysis", model="distilbert-base-uncased-finetuned-sst-2-english")
+flair_classifier = TextClassifier.load("sentiment")
+
+def analyze_sentiment(review):
+    if not isinstance(review, str) or review.strip() == "":
+        return None, None, None  # Return None for missing reviews
+    
+    # VADER (lexicon-based, outputs compound score)
+    vader_score = vader.polarity_scores(review)["compound"]
+    
+    # BERT (outputs Positive/Negative with confidence score)
+    bert_result = bert_classifier(review)[0]
+    bert_score = bert_result["score"] if bert_result["label"] == "POSITIVE" else -bert_result["score"]
+    
+    # Flair (outputs sentiment label with confidence score)
+    sentence = Sentence(review)
+    flair_classifier.predict(sentence)
+    flair_label = sentence.labels[0]
+    flair_score = flair_label.score if flair_label.value == "POSITIVE" else -flair_label.score
+    
+    return vader_score, bert_score, flair_score
+
+# Apply the sentiment analysis to each review
+df[["VADER_Score", "BERT_Score", "Flair_Score"]] = df["Review"].apply(
+    lambda x: pd.Series(analyze_sentiment(x))
+)
+
+# Save the results to a new CSV file
+df.to_csv("Sentiment_Results.csv", index=False)
